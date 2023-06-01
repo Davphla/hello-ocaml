@@ -1,6 +1,0 @@
-description = ""
-requires = ""
-archive(byte) = "pong.cma"
-archive(native) = "pong.cmxa"
-plugin(byte) = "pong.cma"
-plugin(native) = "pong.cmxs"
