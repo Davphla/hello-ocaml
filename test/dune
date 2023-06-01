@@ -1,0 +1,5 @@
+(test
+ (libraries pong alcotest)
+ (name hellotest)
+ (modules hellotest)
+ )

@@ -1,0 +1,4 @@
+(library
+ (name pong)
+ (public_name pong)
+ )

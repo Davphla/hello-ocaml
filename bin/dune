@@ -1,0 +1,12 @@
+; (executable
+;  (name pong)
+;  (public_name pong)
+;  (libraries domainslib)
+; )
+
+(executable
+ (name actor)
+ (public_name actor)
+ (libraries actorsocaml)
+ (preprocess (staged_pps actorsocamlppx))
+)
