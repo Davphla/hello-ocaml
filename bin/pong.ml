@@ -4,29 +4,10 @@ module T = Domainslib.Task
 module C
  = struct 
 
-  type mutex_condvar = {
-    mutex: Mutex.t;
-    condition: Condition.t
-  };;
-
-  let mutex_condvar_key =
-    Domain.DLS.new_key (fun () ->
-      let m = Mutex.create () in
-      let c = Condition.create () in
-      {mutex=m; condition=c});;
-
-  
-  type 'a chan = 'a Atomic.t;;
 
   let make () = Atomic.make None;;
-  
 
-  let set_chan_atom obj old_c new_c recur_f = 
-    if not @@ Atomic.compare_and_set obj old_c new_c then 
-      Domain.cpu_relax ();
-      recur_f ();;
-
-  let block_until_available old_c = 
+  (* let block_until_available old_c = 
     let mc = Domain.DLS.get mutex_condvar_key in
     let msg_slot = ref old_c in
     begin
@@ -36,38 +17,51 @@ module C
       done;
       Mutex.unlock mc.mutex;
       !msg_slot
-    end;;
+    end;; *)
       
+  let rec set_chan_atom obj new_c = 
+    let old_c = Atomic.get obj in 
+    if Atomic.compare_and_set obj old_c new_c then () else
+      (Domain.cpu_relax ();
+      set_chan_atom obj new_c)
 
-  let rec send obj new_c = 
+  let rec block_until_available obj old_c =
+    let cont = Atomic.get obj in 
+    if cont = old_c then 
+      (Domain.cpu_relax ();
+      block_until_available obj old_c;)
+    else
+      cont  
+
+
+  let send obj new_c = 
     let old_c = Atomic.get obj in 
     let send_val () = 
-      let recur = (fun _ -> send obj new_c) in 
-      set_chan_atom obj old_c new_c recur;
+      set_chan_atom obj new_c;
     in
 
     match old_c with
     | None -> 
       send_val ()
     | Some _ -> 
-      ignore @@ block_until_available old_c;
+      ignore @@ block_until_available obj old_c;
       send_val ();;
 
 
-  let rec recv obj =
+  
+  let recv obj =
     let cont = Atomic.get obj in 
-    let clear_val () = 
-      let recur = (fun _ -> recv obj) in 
-      set_chan_atom obj cont None recur;
+    let clear_chan obj = 
+      set_chan_atom obj None
     in
     
     match cont with
     | None -> 
-      let new_c = block_until_available None in 
-      clear_val ();
+      let new_c = block_until_available obj None in 
+      clear_chan obj;
       new_c
     | cont -> 
-      clear_val ();
+      clear_chan obj;
       cont
 
 end
@@ -88,7 +82,7 @@ let process schan rchan =
 
 let counter_start = let c1 = C.make () in 
   let c2 = C.make () in
-  let _ = Domain.spawn (fun _ -> process c1 c2) in 
+  let _p1 = Domain.spawn (fun _ -> process c1 c2) in 
   let p2 = Domain.spawn (fun _ -> process c2 c1) in 
   C.send c1 (Some 0);
   Domain.join p2
